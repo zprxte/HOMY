@@ -1,0 +1,414 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  HeartPulse, Home, Dog, ShieldAlert, ChevronRight, Star, MapPin, Clock, Camera, 
+  CheckCircle2, ArrowLeft, User, CreditCard, MessageSquare, Upload, 
+  Video, AlertTriangle, QrCode, Heart, Briefcase, Plus, Check, Map, Send, RefreshCcw
+} from 'lucide-react';
+
+export default function App() {
+  // --- Global State Management (เชื่อมข้อมูล 2 ฝั่ง) ---
+  const [role, setRole] = useState(null); // 'user' | 'caregiver'
+  const [jobStatus, setJobStatus] = useState('idle'); // idle -> searching -> booked -> in_progress -> completed -> reviewed
+  const [services, setServices] = useState({ elderly: true, cleaning: false, pet: false });
+  const [updates, setUpdates] = useState([]);
+  const [sosActive, setSosActive] = useState(false);
+  const [reviewScore, setReviewScore] = useState(0);
+
+  // ข้อมูลจำลองผู้ดูแล
+  const caregiverProfile = { name: 'สมใจ รักดี', rating: 4.9, image: 'https://i.pravatar.cc/150?img=47' };
+
+  const calculatePrice = () => {
+    let base = 0;
+    if (services.elderly) base += 800;
+    if (services.cleaning) base += 400;
+    if (services.pet) base += 300;
+    return base;
+  };
+  const totalPrice = calculatePrice();
+  const deposit = 500;
+
+  // รีเซ็ตระบบ
+  const resetSystem = () => {
+    setJobStatus('idle');
+    setServices({ elderly: true, cleaning: false, pet: false });
+    setUpdates([]);
+    setSosActive(false);
+    setReviewScore(0);
+  };
+
+  // ---------------------------------------------------------------------------
+  // หน้าเลือกบทบาทเริ่มต้น
+  // ---------------------------------------------------------------------------
+  if (!role) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
+          <h1 className="text-3xl font-bold text-teal-600 mb-2">HOMY</h1>
+          <p className="text-gray-500 mb-8">กรุณาเลือกบทบาทเพื่อเข้าใช้งานระบบจำลอง</p>
+          
+          <button onClick={() => setRole('user')} className="w-full bg-teal-500 hover:bg-teal-600 text-white p-4 rounded-xl mb-4 flex items-center justify-center font-bold transition">
+            <User className="w-6 h-6 mr-2" /> เข้าสู่ระบบ "ผู้ใช้บริการ"
+          </button>
+          
+          <button onClick={() => setRole('caregiver')} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl flex items-center justify-center font-bold transition">
+            <Briefcase className="w-6 h-6 mr-2" /> เข้าสู่ระบบ "ผู้ให้บริการ"
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // ส่วนประกอบ UI กลาง
+  // ---------------------------------------------------------------------------
+  const TopBar = ({ title, themeColor, onBack, noBack }) => (
+    <div className={`bg-${themeColor}-600 text-white p-4 pt-10 flex justify-between items-center shadow-md z-20 relative`}>
+      <div className="flex items-center">
+        {!noBack && <button onClick={onBack} className="mr-3 p-1 hover:bg-white/20 rounded-full"><ArrowLeft className="w-5 h-5" /></button>}
+        <h1 className="text-lg font-bold">{title}</h1>
+      </div>
+      <button 
+        onClick={() => setRole(role === 'user' ? 'caregiver' : 'user')}
+        className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-xs font-bold flex items-center"
+      >
+        <RefreshCcw className="w-3 h-3 mr-1" /> สลับเป็น {role === 'user' ? 'ผู้ให้บริการ' : 'ผู้ใช้บริการ'}
+      </button>
+    </div>
+  );
+
+  const SOSOverlay = () => sosActive && (
+    <div className="absolute inset-0 bg-red-900/95 z-50 flex flex-col items-center justify-center p-6 text-center text-white backdrop-blur-md">
+      <AlertTriangle className="w-24 h-24 text-red-500 mb-4 animate-ping absolute opacity-50" />
+      <AlertTriangle className="w-24 h-24 text-red-400 mb-4 relative z-10" />
+      <h2 className="text-3xl font-bold mb-2">โหมดฉุกเฉิน (SOS)</h2>
+      <p className="text-red-100 mb-8 text-sm">ระบบกำลังแชร์พิกัดไปยังรถพยาบาล และแจ้งเตือนไปยังญาติผู้ใช้บริการ</p>
+      <button onClick={() => setSosActive(false)} className="bg-white text-red-600 font-bold px-8 py-3 rounded-full shadow-lg">ยกเลิก SOS (เพื่อจำลองต่อ)</button>
+    </div>
+  );
+
+  // ===========================================================================
+  // ฝั่งผู้ใช้บริการ (User App) - ธีมสีเขียว (Teal)
+  // ===========================================================================
+  const UserApp = () => {
+    const [screen, setScreen] = useState('home');
+
+    // Auto-navigate based on global status
+    useEffect(() => {
+      if (jobStatus === 'booked' && screen === 'matching') setScreen('upcoming');
+      if (jobStatus === 'in_progress' && (screen === 'upcoming' || screen === 'home')) setScreen('active');
+      if (jobStatus === 'completed' && screen === 'active') setScreen('checkout');
+    }, [jobStatus]);
+
+    const handleServiceToggle = (key) => {
+      setServices(prev => ({...prev, [key]: !prev[key]}));
+    };
+
+    const bookJob = () => {
+      setJobStatus('booked');
+      setScreen('upcoming');
+      setUpdates([{ time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}), text: 'ลูกค้ายืนยันการจองและชำระมัดจำแล้ว', type: 'system' }]);
+    };
+
+    return (
+      <div className="flex flex-col h-full bg-gray-50 relative">
+        <SOSOverlay />
+        
+        {screen === 'home' && (
+          <>
+            <TopBar title="HOMY สำหรับลูกค้า" themeColor="teal" noBack />
+            <div className="p-4 flex-1 overflow-y-auto">
+              <div className="bg-teal-50 p-4 rounded-xl border border-teal-100 mb-6">
+                <h2 className="font-bold text-teal-800 mb-1">เลือกบริการที่คุณต้องการ</h2>
+                <p className="text-xs text-teal-600">ราคาสุทธิจะปรับตามบริการที่คุณเลือก (Dynamic Pricing)</p>
+              </div>
+              
+              <div className="space-y-3 mb-6">
+                <ServiceToggle title="ดูแลผู้สูงอายุ" price="฿800/วัน" active={services.elderly} onClick={() => handleServiceToggle('elderly')} icon={<HeartPulse className="text-rose-500"/>} />
+                <ServiceToggle title="ทำความสะอาดบ้าน" price="+฿400/วัน" active={services.cleaning} onClick={() => handleServiceToggle('cleaning')} icon={<Home className="text-blue-500"/>} />
+                <ServiceToggle title="ดูแลสัตว์เลี้ยง" price="+฿300/วัน" active={services.pet} onClick={() => handleServiceToggle('pet')} icon={<Dog className="text-orange-500"/>} />
+              </div>
+              
+              <div className="bg-white p-4 rounded-xl border shadow-sm">
+                <p className="text-sm font-bold text-gray-700 mb-2">สถานที่และเวลา</p>
+                <input type="text" value="บ้านสุขุมวิท 50" readOnly className="w-full bg-gray-50 border p-3 rounded-lg text-sm mb-2" />
+                <input type="date" className="w-full bg-gray-50 border p-3 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="bg-white p-4 border-t shadow-lg">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-gray-600 font-medium">ยอดประมาณการ:</span>
+                <span className="text-2xl font-bold text-teal-600">฿{totalPrice}</span>
+              </div>
+              <button onClick={() => setScreen('matching')} className="w-full bg-teal-600 text-white font-bold py-3 rounded-xl shadow-md active:bg-teal-700">ค้นหาผู้ดูแลด้วย AI</button>
+            </div>
+          </>
+        )}
+
+        {screen === 'matching' && (
+          <>
+            <TopBar title="AI Matching" themeColor="teal" onBack={() => setScreen('home')} />
+            <div className="p-4 flex-1 overflow-y-auto">
+              <p className="text-sm text-gray-600 mb-4">พบผู้ดูแลที่ตรงกับความต้องการของคุณ</p>
+              <div className="bg-white p-4 rounded-xl border-2 border-teal-500 shadow-md relative">
+                <div className="absolute top-0 right-0 bg-teal-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg">98% Match</div>
+                <div className="flex items-start">
+                  <img src={caregiverProfile.image} className="w-16 h-16 rounded-full border-2 border-gray-100" alt="profile" />
+                  <div className="ml-4">
+                    <h3 className="font-bold text-lg">{caregiverProfile.name}</h3>
+                    <p className="text-xs text-gray-500 mb-1">มีทักษะครบตามที่คุณเลือก</p>
+                    <span className="flex items-center text-amber-500 font-bold text-sm"><Star className="w-4 h-4 mr-1 fill-current"/> {caregiverProfile.rating}</span>
+                  </div>
+                </div>
+                <div className="mt-4 bg-teal-50 p-3 rounded-lg text-xs text-teal-800">
+                  <strong>ระบบ Escrow:</strong> ชำระมัดจำ ฿{deposit} ระบบจะถือเงินไว้จนกว่างานจะจบ
+                </div>
+                <button onClick={bookJob} className="mt-4 w-full bg-teal-600 text-white font-bold py-3 rounded-xl">ยืนยันจองและจ่ายมัดจำ</button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {screen === 'upcoming' && (
+          <>
+            <TopBar title="รอรับบริการ" themeColor="teal" noBack />
+            <div className="p-6 flex-1 flex flex-col items-center justify-center text-center">
+              <CheckCircle2 className="w-16 h-16 text-teal-500 mb-4" />
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">จองสำเร็จ!</h2>
+              <p className="text-gray-500 text-sm mb-6">คุณได้ชำระเงินมัดจำแล้ว กรุณารอผู้ดูแล Check-in ในวันนัดหมาย</p>
+              
+              <div className="w-full bg-blue-50 border border-blue-100 p-4 rounded-xl mb-6">
+                <Video className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                <p className="font-bold text-blue-800 text-sm">Telemedicine / VDO Call</p>
+                <p className="text-xs text-blue-600 mb-3">พูดคุยรายละเอียดล่วงหน้า</p>
+                <button className="bg-blue-600 text-white px-6 py-2 rounded-full text-xs font-bold">โทรหาผู้ดูแล</button>
+              </div>
+
+              <div className="animate-pulse flex items-center text-amber-600 text-sm bg-amber-50 px-4 py-2 rounded-full border border-amber-200">
+                <Clock className="w-4 h-4 mr-2" /> รอผู้ดูแลสลับไปหน้า "ผู้ให้บริการ" และกด Check-in
+              </div>
+            </div>
+          </>
+        )}
+
+        {screen === 'active' && (
+          <>
+            <TopBar title="สถานะปัจจุบัน (Live)" themeColor="teal" noBack />
+            <div className="p-4 flex-1 overflow-y-auto pb-24">
+              <div className="bg-white p-4 rounded-xl shadow-sm border mb-4">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center"><Camera className="w-5 h-5 mr-2 text-teal-600"/> ไทม์ไลน์จากผู้ดูแล</h3>
+                <div className="space-y-4 border-l-2 border-teal-200 ml-3 pl-4">
+                  {updates.map((upd, idx) => (
+                    <div key={idx} className="relative">
+                      <div className={`absolute w-3 h-3 rounded-full -left-[23px] top-1 ${upd.type === 'system' ? 'bg-gray-400' : 'bg-teal-500'}`}></div>
+                      <p className="text-xs text-gray-500">{upd.time}</p>
+                      <p className="font-medium text-sm text-gray-800">{upd.text}</p>
+                      {upd.image && <div className="mt-2 text-[10px] bg-gray-100 p-2 rounded flex items-center text-gray-500 border"><Camera className="w-3 h-3 mr-1"/> แนบรูปภาพแล้ว</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {jobStatus === 'in_progress' && (
+                <div className="text-center text-xs text-gray-400 mt-4">ผู้ดูแลกำลังปฏิบัติงาน... คุณสามารถรออัปเดต หรือกด SOS หากมีเหตุฉุกเฉิน</div>
+              )}
+            </div>
+            
+            {jobStatus === 'in_progress' && (
+              <div className="absolute bottom-4 left-4 right-4 z-20">
+                <button onClick={() => setSosActive(true)} className="w-16 h-16 bg-red-500 text-white rounded-full flex flex-col items-center justify-center shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+                  <ShieldAlert className="w-6 h-6 mb-0.5" />
+                  <span className="text-[10px] font-bold">SOS</span>
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {screen === 'checkout' && (
+          <>
+            <TopBar title="สรุปงานและประเมิน" themeColor="teal" noBack />
+            <div className="p-4 flex-1 overflow-y-auto">
+              <div className="bg-white p-5 rounded-xl shadow-sm border mb-4 text-center">
+                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                <h2 className="font-bold text-lg mb-4">บริการเสร็จสิ้น!</h2>
+                <div className="text-left text-sm space-y-2 border-t pt-4 border-dashed">
+                  <div className="flex justify-between"><span>ยอดรวมสุทธิ</span><span>฿{totalPrice}</span></div>
+                  <div className="flex justify-between text-teal-600"><span>หักมัดจำ (Escrow)</span><span>- ฿{deposit}</span></div>
+                  <div className="flex justify-between font-bold text-lg pt-2 border-t"><span>ยอดต้องชำระเพิ่ม</span><span>฿{totalPrice - deposit}</span></div>
+                </div>
+                <button onClick={() => { alert('ชำระเงินสำเร็จ'); setJobStatus('reviewed'); }} className="mt-4 w-full bg-gray-800 text-white font-bold py-3 rounded-xl flex justify-center items-center">
+                  <CreditCard className="w-5 h-5 mr-2"/> ชำระเงินส่วนที่เหลือ
+                </button>
+              </div>
+
+              {jobStatus === 'reviewed' && (
+                <div className="bg-white p-4 rounded-xl shadow-sm border text-center">
+                  <h3 className="font-bold mb-3">ให้คะแนนผู้ดูแล</h3>
+                  <div className="flex justify-center gap-2 mb-4">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <Star key={s} onClick={() => setReviewScore(s)} className={`w-8 h-8 cursor-pointer ${s <= reviewScore ? 'text-amber-400 fill-current' : 'text-gray-200'}`} />
+                    ))}
+                  </div>
+                  <button onClick={resetSystem} className="w-full bg-teal-600 text-white font-bold py-3 rounded-xl">ส่งรีวิว & กลับหน้าแรก</button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ===========================================================================
+  // ฝั่งผู้ให้บริการ (Caregiver App) - ธีมสีน้ำเงิน (Blue)
+  // ===========================================================================
+  const CaregiverApp = () => {
+    const [updateText, setUpdateText] = useState('');
+
+    const handleCheckIn = () => {
+      setJobStatus('in_progress');
+      setUpdates(prev => [...prev, { time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}), text: '📍 ผู้ดูแลทำการ Check-in และเดินทางถึงบ้านลูกค้าแล้ว', type: 'system' }]);
+    };
+
+    const sendUpdate = () => {
+      if(!updateText) return;
+      setUpdates(prev => [...prev, { time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}), text: updateText, image: true, type: 'user' }]);
+      setUpdateText('');
+    };
+
+    const handleCheckOut = () => {
+      setJobStatus('completed');
+      setUpdates(prev => [...prev, { time: new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}), text: '🏁 ผู้ดูแล Check-out เสร็จสิ้นบริการ', type: 'system' }]);
+    };
+
+    return (
+      <div className="flex flex-col h-full bg-gray-100 relative">
+        <SOSOverlay />
+        <TopBar title="HOMY สำหรับผู้ให้บริการ" themeColor="blue" noBack />
+
+        <div className="p-4 flex-1 overflow-y-auto pb-24">
+          {jobStatus === 'idle' || jobStatus === 'searching' ? (
+            <div className="text-center mt-10">
+              <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-gray-500">ไม่มีงานในขณะนี้</h2>
+              <p className="text-sm text-gray-400 mt-2">สลับไปหน้า "ผู้ใช้บริการ" แล้วกดจองงาน เพื่อจำลองให้งานเด้งเข้ามาที่หน้านี้ครับ</p>
+            </div>
+          ) : jobStatus === 'booked' ? (
+            <div className="bg-white p-5 rounded-xl shadow-md border-l-4 border-blue-500">
+              <div className="flex justify-between items-start mb-3">
+                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded">งานใหม่!</span>
+                <span className="text-blue-600 font-bold text-lg">฿{totalPrice}</span>
+              </div>
+              <h3 className="font-bold text-gray-800">ดูแลบ้านที่สุขุมวิท 50</h3>
+              <p className="text-sm text-gray-500 mb-3 flex items-center mt-1"><Clock className="w-4 h-4 mr-1"/> วันนี้ 08:00 - 17:00</p>
+              
+              <div className="bg-gray-50 p-3 rounded-lg text-sm mb-4 space-y-1">
+                <p className="font-semibold text-gray-700">สิ่งที่ต้องทำ:</p>
+                {services.elderly && <p className="flex items-center text-rose-600"><Check className="w-4 h-4 mr-1"/> ดูแลผู้สูงอายุ</p>}
+                {services.cleaning && <p className="flex items-center text-blue-600"><Check className="w-4 h-4 mr-1"/> ทำความสะอาดบ้าน</p>}
+                {services.pet && <p className="flex items-center text-orange-600"><Check className="w-4 h-4 mr-1"/> ดูแลสัตว์เลี้ยง</p>}
+              </div>
+
+              <button onClick={handleCheckIn} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex justify-center items-center shadow-md transition">
+                <MapPin className="w-5 h-5 mr-2" /> Check-in เริ่มงานเลย
+              </button>
+            </div>
+          ) : jobStatus === 'in_progress' ? (
+            <div className="space-y-4">
+              <div className="bg-blue-600 text-white p-4 rounded-xl shadow-md">
+                <h2 className="font-bold flex items-center"><Clock className="w-5 h-5 mr-2 animate-pulse"/> กำลังปฏิบัติงาน...</h2>
+                <p className="text-sm text-blue-100 mt-1">อย่าลืมส่งรูปอัปเดตสถานะให้ลูกค้าเป็นระยะ</p>
+              </div>
+
+              {/* Form ส่งอัปเดต (Live Update) */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border">
+                <h3 className="font-bold text-gray-800 mb-2">ส่ง Live Update</h3>
+                <textarea 
+                  value={updateText}
+                  onChange={(e) => setUpdateText(e.target.value)}
+                  placeholder="เช่น ป้อนยาคุณตาแล้วค่ะ, ให้อาหารน้องหมาแล้ว..." 
+                  className="w-full bg-gray-50 border p-3 rounded-lg text-sm h-20 outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                ></textarea>
+                <div className="flex gap-2">
+                  <button className="flex-1 border border-blue-200 text-blue-600 bg-blue-50 py-2 rounded-lg flex justify-center items-center text-sm font-medium">
+                    <Camera className="w-4 h-4 mr-1" /> ถ่ายรูป
+                  </button>
+                  <button onClick={sendUpdate} className="flex-1 bg-blue-600 text-white py-2 rounded-lg flex justify-center items-center text-sm font-bold">
+                    <Send className="w-4 h-4 mr-1" /> ส่งอัปเดต
+                  </button>
+                </div>
+              </div>
+
+              {/* ประวัติการอัปเดต */}
+              <div className="bg-white p-4 rounded-xl shadow-sm border">
+                <h3 className="font-bold text-gray-800 mb-3 text-sm">ประวัติที่ส่งแล้ว</h3>
+                <div className="space-y-3">
+                  {updates.filter(u => u.type === 'user').length === 0 && <p className="text-xs text-gray-400 text-center py-2">ยังไม่มีการส่งอัปเดต</p>}
+                  {updates.filter(u => u.type === 'user').map((upd, idx) => (
+                    <div key={idx} className="bg-gray-50 p-2 rounded text-sm text-gray-700 border flex items-start">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 mr-2 mt-0.5 shrink-0" />
+                      <div><span className="text-xs text-gray-400 mr-2">{upd.time}</span> {upd.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center mt-10">
+              <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-gray-800">จบงานเรียบร้อย</h2>
+              <p className="text-sm text-gray-500 mt-2">เงินค่าจ้าง ฿{totalPrice} เข้ากระเป๋า (Escrow Wallet) เรียบร้อยแล้ว</p>
+              <button onClick={resetSystem} className="mt-8 border-2 border-blue-600 text-blue-600 font-bold px-6 py-2 rounded-full">รอรับงานถัดไป</button>
+            </div>
+          )}
+        </div>
+
+        {/* ปุ่มด้านล่างของฝั่งผู้ให้บริการ */}
+        {jobStatus === 'in_progress' && (
+          <div className="absolute bottom-4 left-4 right-4 flex gap-3 z-20">
+            <button onClick={() => setSosActive(true)} className="bg-red-500 text-white rounded-xl w-16 flex flex-col items-center justify-center shadow-lg">
+               <ShieldAlert className="w-6 h-6" />
+            </button>
+            <button onClick={handleCheckOut} className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-lg flex justify-center items-center">
+              สิ้นสุดงาน (Check-out) <ChevronRight className="w-5 h-5 ml-1" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Helper Component
+  function ServiceToggle({ title, price, active, onClick, icon }) {
+    return (
+      <div onClick={onClick} className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center ${active ? 'border-teal-500 bg-white' : 'border-transparent bg-white shadow-sm'}`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${active ? 'bg-teal-50' : 'bg-gray-50'}`}>{icon}</div>
+        <div className="ml-3 flex-1 flex justify-between items-center">
+           <span className={`font-bold ${active ? 'text-teal-800' : 'text-gray-700'}`}>{title}</span>
+           <span className="text-sm font-semibold text-gray-500">{price}</span>
+        </div>
+        <div className={`ml-3 w-6 h-6 rounded-full border-2 flex items-center justify-center ${active ? 'bg-teal-500 border-teal-500' : 'border-gray-300'}`}>
+          {active && <Check className="w-4 h-4 text-white" />}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main Renderer (กรอบมือถือ)
+  // ---------------------------------------------------------------------------
+  return (
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-[400px] h-[800px] max-h-full bg-black rounded-[3rem] shadow-2xl overflow-hidden relative border-[12px] border-gray-800 ring-4 ring-gray-700">
+        
+        {/* Notch */}
+        <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
+          <div className="w-32 h-6 bg-gray-800 rounded-b-2xl"></div>
+        </div>
+        
+        {/* Render App based on Role */}
+        {role === 'user' ? <UserApp /> : <CaregiverApp />}
+        
+      </div>
+    </div>
+  );
+}
